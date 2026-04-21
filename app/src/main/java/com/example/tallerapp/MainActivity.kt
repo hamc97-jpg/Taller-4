@@ -9,11 +9,14 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
+
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -27,7 +30,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+
 import androidx.core.content.ContextCompat
+
 import com.google.accompanist.permissions.*
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -35,21 +40,31 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.*
 
+/*
+Aquí se inicializa la interfaz usando Jetpack Compose.
+*/
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         setContent {
             PantallaPermisos()
         }
     }
 }
 
+/*
+Modelo de datos que representa una foto junto con su ubicación.
+*/
 data class FotoUbicacion(
     val uri: String,
     val latLng: LatLng,
     val nombre: String
 )
 
+/*
+Pantalla encargada de solicitar permisos de cámara y ubicación.
+*/
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun PantallaPermisos() {
@@ -57,18 +72,21 @@ fun PantallaPermisos() {
     val cameraPermission = rememberPermissionState(Manifest.permission.CAMERA)
     val locationPermission = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
 
+    // Solicita permiso de cámara al iniciar
     LaunchedEffect(Unit) {
         if (!cameraPermission.status.isGranted) {
             cameraPermission.launchPermissionRequest()
         }
     }
 
+    // Luego solicita ubicación
     LaunchedEffect(cameraPermission.status.isGranted) {
         if (cameraPermission.status.isGranted && !locationPermission.status.isGranted) {
             locationPermission.launchPermissionRequest()
         }
     }
 
+    // Si ambos permisos están activos se muestra la app
     if (cameraPermission.status.isGranted && locationPermission.status.isGranted) {
         PantallaPrincipal()
     } else {
@@ -78,6 +96,10 @@ fun PantallaPermisos() {
     }
 }
 
+/*
+Pantalla principal que divide la interfaz en dos regiones:
+cámara y mapa, adaptándose a la orientación.
+*/
 @Composable
 fun PantallaPrincipal() {
 
@@ -119,6 +141,13 @@ fun PantallaPrincipal() {
     }
 }
 
+/*
+Vista de cámara:
+- Muestra preview
+- Permite tomar fotos
+- Cambiar cámara
+- Muestra galería inferior
+*/
 @Composable
 fun CameraView(
     listaFotos: MutableList<FotoUbicacion>,
@@ -134,8 +163,15 @@ fun CameraView(
 
     Column(Modifier.fillMaxSize()) {
 
-        AndroidView({ previewView }, modifier = Modifier.weight(1f))
+        // Vista de cámara
+        AndroidView(
+            { previewView },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        )
 
+        // Botones de cámara
         Row(
             Modifier.fillMaxWidth().padding(8.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
@@ -193,7 +229,6 @@ fun CameraView(
                             override fun onError(exception: ImageCaptureException) {}
                         }
                     )
-
                 },
                 enabled = recorridoActivo
             ) {
@@ -211,25 +246,35 @@ fun CameraView(
             }
         }
 
-        LazyRow(Modifier.height(100.dp)) {
-            items(listaFotos) { foto ->
+        // Galería de fotos
+        Box(
+            Modifier.fillMaxWidth().height(100.dp).padding(8.dp)
+        ) {
+            Surface(modifier = Modifier.fillMaxSize()) {
 
-                val uri = Uri.parse(foto.uri)
-                val input = context.contentResolver.openInputStream(uri)
-                val bitmap = BitmapFactory.decodeStream(input)
+                LazyRow(Modifier.padding(8.dp)) {
+                    items(listaFotos) { foto ->
 
-                bitmap?.let {
-                    Image(
-                        bitmap = it.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier.size(80.dp).padding(4.dp)
-                    )
+                        val uri = Uri.parse(foto.uri)
+                        val input = context.contentResolver.openInputStream(uri)
+                        val bitmap = BitmapFactory.decodeStream(input)
+
+                        bitmap?.let {
+                            Image(
+                                bitmap = it.asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier.size(80.dp).padding(end = 8.dp)
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 
+    // Configuración de la cámara
     LaunchedEffect(lensFacing) {
+
         val provider = ProcessCameraProvider.getInstance(context).get()
 
         val preview = Preview.Builder().build().also {
@@ -248,6 +293,12 @@ fun CameraView(
     }
 }
 
+/*
+Vista del mapa:
+- Muestra ubicación
+- Muestra fotos como marcadores
+- Controla recorrido
+*/
 @SuppressLint("MissingPermission")
 @Composable
 fun MapaView(
@@ -262,6 +313,7 @@ fun MapaView(
     var userLocation by remember { mutableStateOf<LatLng?>(null) }
     val cameraState = rememberCameraPositionState()
 
+    // Obtiene ubicación actual
     LaunchedEffect(Unit) {
         try {
             if (ContextCompat.checkSelfPermission(
@@ -293,7 +345,6 @@ fun MapaView(
                 }
             }
 
-            // 📸 MARCADORES CON MINIATURA
             listaFotos.forEach { foto ->
 
                 val uri = Uri.parse(foto.uri)
@@ -301,7 +352,6 @@ fun MapaView(
                 val bitmap = BitmapFactory.decodeStream(input)
 
                 bitmap?.let {
-
                     val small = android.graphics.Bitmap.createScaledBitmap(it, 100, 100, false)
 
                     Marker(
@@ -313,19 +363,32 @@ fun MapaView(
             }
         }
 
+        // Botones
         Row(
-            Modifier.fillMaxWidth().padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 16.dp)
+                .navigationBarsPadding(), // 👈 ESTA ES LA CLAVE
+            verticalAlignment = Alignment.CenterVertically
         ) {
 
-            Button(onClick = { onRecorridoChange(true) }) {
+            Button(
+                onClick = { onRecorridoChange(true) },
+                modifier = Modifier.weight(1f)
+            ) {
                 Text("Iniciar recorrido")
             }
 
-            Button(onClick = {
-                listaFotos.clear()
-                onRecorridoChange(false)
-            }) {
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Button(
+                onClick = {
+                    listaFotos.clear()
+                    onRecorridoChange(false)
+                },
+                modifier = Modifier.weight(1f)
+            ) {
                 Text("Borrar recorrido")
             }
         }
